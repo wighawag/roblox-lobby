@@ -1,0 +1,7 @@
+# selene standard library: Roblox, plus require-by-string (selene's bundled roblox std predates it)
+base: roblox
+name: roblox-lobby
+globals:
+  require:
+    args:
+      - type: any

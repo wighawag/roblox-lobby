@@ -1,0 +1,8 @@
+/result
+/build/
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+!examples/**/*.rbxmx
+sourcemap.json
