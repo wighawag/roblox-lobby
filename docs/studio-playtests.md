@@ -21,3 +21,11 @@ Read the Output with `grep -a 'FLog::Creator' <newest Studio log> | tr -d '\r'`.
 | P6 | lobby opened from Roblox (published test experience), Play (solo) | walk onto "four" | `party ... teleporting`, then the game place opens as a new test server and its Output shows `MATCH READY source=teleport` (Studio's teleport testing, 2026-11-05; the destination runs its last PUBLISHED or saved version) |
 
 P1 to P5 need no publishing. P6 needs the test experience (operator decision 4) and confirms the real arrival path for one player; groups stay with the live checklist.
+
+## Results
+
+| date | version | Studio | P1 | P2 | P3 | P4 | P5 | P6 | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-24 | 0.1.0-dev (5d4080f + example fix) | 0.748 (Flatpak Vinegar 1.9.4, telemaque) | pass | pass | pass | pass | pass | not run | P2 also checked the status line, the Leave button (player moved to ExitPos, status hidden) and the billboard; P3 with 2 clients moved onto "duo" from the Server command bar; P5 started one Studio match with Player1 and Player2. Found and fixed: the example's Baseplate used `Position`, which Rojo does not serialize for a Part (use `CFrame`), so the baseplate covered the pads. |
+
+Driving tips: `Humanoid:MoveTo(Vector3.new(x, 1, z))` from the command bar walks a character onto a pad for real (Touched fires); in Server & Clients, run it from the Server window's command bar for every player. The client count spinner starts at 0 after selecting Server & Clients: click its up arrow (278, 31) twice for 2 clients.
