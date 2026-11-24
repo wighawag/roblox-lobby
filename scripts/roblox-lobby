@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# roblox-lobby: vendor the package into a Rojo project, or check a LobbyConfig against Roblox's web APIs.
+#   roblox-lobby vendor [PROJECT_DIR]          copy the package to PROJECT_DIR/Packages/RobloxLobby (default .)
+#   roblox-lobby vendor --check [PROJECT_DIR]  is that copy identical to this version?
+#   roblox-lobby check PATH/TO/LobbyConfig.luau  no-client place id check (needs network, no login)
+#   roblox-lobby version
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# in this repo the script lives in scripts/; in the installed package, share/roblox-lobby/scripts/
+root="$(cd "$here/.." && pwd)"
+version="$(cat "$root/VERSION")"
+
+usage() { sed -n '2,6p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+vendor() {
+	local check=0
+	if [ "${1:-}" = "--check" ]; then check=1; shift; fi
+	local dir="${1:-.}"
+	local dest="$dir/Packages/RobloxLobby"
+	if [ "$check" = 1 ]; then
+		if [ ! -d "$dest" ]; then echo "not vendored: $dest does not exist"; exit 1; fi
+		if diff -r -q -x VERSION "$root/src" "$dest" >/dev/null && [ "$(cat "$dest/VERSION" 2>/dev/null)" = "$version" ]; then
+			echo "ok: $dest is roblox-lobby $version"
+		else
+			echo "DIFFERENT: $dest is not roblox-lobby $version (vendored: $(cat "$dest/VERSION" 2>/dev/null || echo unknown)); run: roblox-lobby vendor $dir"
+			exit 1
+		fi
+		return
+	fi
+	if [ ! -d "$dir" ]; then echo "no such directory: $dir"; exit 1; fi
+	rm -rf "$dest"
+	mkdir -p "$dest"
+	cp -r "$root/src/." "$dest/"
+	chmod -R u+w "$dest"
+	echo "$version" > "$dest/VERSION"
+	echo "Vendored roblox-lobby $version into $dest"
+	echo
+	echo "In EACH *.project.json (lobby and game), under \"ReplicatedStorage\", add:"
+	echo '  "Packages": { "$className": "Folder", "RobloxLobby": { "$path": "Packages/RobloxLobby" } },'
+	echo "(adjust the path if the project file is not in $dir). Then: require(ReplicatedStorage.Packages.RobloxLobby)"
+}
+
+case "${1:-}" in
+	vendor) shift; vendor "$@" ;;
+	check)
+		shift
+		if [ -z "${1:-}" ]; then usage; exit 2; fi
+		cfg="$(realpath "$1")"
+		cd "$root" && exec lune run scripts/check-places "$cfg"
+		;;
+	version) echo "$version" ;;
+	-h|--help|help|"") usage ;;
+	*) usage; exit 2 ;;
+esac

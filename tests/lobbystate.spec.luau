@@ -1,0 +1,160 @@
+--!strict
+local Config = require("../src/Config")
+local LobbyState = require("../src/LobbyState")
+local Fixtures = require("./fixtures")
+
+local function newState(): any
+	return LobbyState.new(Config.assert(Fixtures.config()).queues)
+end
+
+return function(T)
+	local it, expect = T.it, T.expect
+	T.describe("LobbyState", function()
+		it("refuses unknown queues, double joins and full queues", function()
+			local s = newState()
+			expect(s:join(1, "nope", 0)).toBe(false)
+			expect(s:join(1, "duo", 0)).toBe(true)
+			local ok, reason = s:join(1, "four", 0)
+			expect(ok).toBe(false)
+			expect(reason).toBe("already-queued")
+			s:join(2, "four", 0)
+			s:join(3, "four", 0)
+			s:join(4, "four", 0)
+			s:join(5, "four", 0)
+			local _, r2 = s:join(6, "four", 0)
+			expect(r2).toBe("full")
+		end)
+
+		it("waits below minPlayers, counts from minPlayers, launches at the end of the countdown", function()
+			local s = newState()
+			s:join(1, "four", 0)
+			expect(s:view("four", 0).phase).toBe("waiting")
+			expect(#s:tick(100)).toBe(0)
+			s:join(2, "four", 100)
+			local v = s:view("four", 105)
+			expect(v.phase).toBe("counting")
+			expect(v.secondsLeft).toBe(15)
+			expect(#s:tick(119)).toBe(0)
+			local launches = s:tick(120)
+			expect(#launches).toBe(1)
+			expect(launches[1].members).toEqual({ 1, 2 })
+			expect(launches[1].place).toBe("game")
+			expect(s:view("four", 120).members).toEqual({})
+		end)
+
+		it("resets the countdown when a leaver drops it below minPlayers", function()
+			local s = newState()
+			s:join(1, "four", 0)
+			s:join(2, "four", 0)
+			s:leave(2, 10)
+			expect(s:view("four", 10).phase).toBe("waiting")
+			s:join(3, "four", 12)
+			expect(s:view("four", 12).secondsLeft).toBe(20)
+			expect(#s:tick(25)).toBe(0)
+			expect(#s:tick(32)).toBe(1)
+		end)
+
+		it("launches at once when full and launchWhenFull", function()
+			local s = newState()
+			for u = 1, 4 do
+				s:join(u, "four", 0)
+			end
+			expect(#s:tick(0)).toBe(1)
+		end)
+
+		it("does not launch early when full without launchWhenFull", function()
+			local raw = Fixtures.config()
+			raw.queues =
+				{ { id = "q", place = "game", minPlayers = 1, maxPlayers = 2, countdown = 5, launchWhenFull = false } }
+			local s = LobbyState.new(Config.assert(raw).queues)
+			s:join(1, "q", 0)
+			s:join(2, "q", 0)
+			expect(#s:tick(4)).toBe(0)
+			expect(#s:tick(5)).toBe(1)
+		end)
+
+		it("countdown 0 launches as soon as minPlayers are in", function()
+			local raw = Fixtures.config()
+			raw.queues = { { id = "q", place = "game", minPlayers = 1, maxPlayers = 4, countdown = 0 } }
+			local s = LobbyState.new(Config.assert(raw).queues)
+			s:join(1, "q", 0)
+			expect(#s:tick(0)).toBe(1)
+		end)
+
+		it("freezes a launching party: no leave, no join elsewhere", function()
+			local s = newState()
+			s:join(1, "duo", 0)
+			s:join(2, "duo", 0)
+			local l = s:tick(0)[1]
+			expect(s:isLaunching(1)).toBe(true)
+			local ok, reason = s:leave(1, 1)
+			expect(ok).toBe(false)
+			expect(reason).toBe("launching")
+			local ok2, reason2 = s:join(1, "four", 1)
+			expect(ok2).toBe(false)
+			expect(reason2).toBe("launching")
+			-- the queue itself is free again for others
+			expect(s:join(3, "duo", 1)).toBe(true)
+			expect(s:getLaunch(l.id) ~= nil).toBe(true)
+		end)
+
+		it("removes a player who leaves the server, from a queue or from a launch", function()
+			local s = newState()
+			s:join(1, "four", 0)
+			local where, id = s:remove(1, 1)
+			expect(where).toBe("queue")
+			expect(id).toBe("four")
+			s:join(2, "duo", 0)
+			s:join(3, "duo", 0)
+			local l = s:tick(0)[1]
+			local where2, id2 = s:remove(2, 1)
+			expect(where2).toBe("launch")
+			expect(id2).toBe(l.id)
+			expect(s:getLaunch(l.id).members).toEqual({ 3 })
+			expect(s:remove(99, 1)).toBe(nil)
+		end)
+
+		it("settles members one by one and forgets a finished launch", function()
+			local s = newState()
+			s:join(1, "duo", 0)
+			s:join(2, "duo", 0)
+			local l = s:tick(0)[1]
+			expect(s:settle(l.id, 1)).toBe(false)
+			expect(s:isLaunching(1)).toBe(false)
+			expect(s:settle(l.id, 2)).toBe(true)
+			expect(s:getLaunch(l.id)).toBe(nil)
+			-- settled players can queue again
+			expect(s:join(1, "four", 1)).toBe(true)
+		end)
+
+		it("abort puts the party back at the front of its queue, within capacity", function()
+			local s = newState()
+			s:join(1, "duo", 0)
+			s:join(2, "duo", 0)
+			local l = s:tick(0)[1]
+			s:join(3, "duo", 1) -- someone joined the reopened queue meanwhile
+			local requeued, freed = s:abort(l.id, 2)
+			expect(requeued).toEqual({ 1 })
+			expect(freed).toEqual({ 2 })
+			expect(s:view("duo", 2).members).toEqual({ 1, 3 })
+			expect(s:isLaunching(2)).toBe(false)
+			expect(s:queueOf(2)).toBe(nil)
+			-- countdown restarts from the abort time
+			expect(s:view("duo", 2).secondsLeft).toBe(10)
+		end)
+
+		it("handles several queues independently in one tick", function()
+			local s = newState()
+			s:join(1, "duo", 0)
+			s:join(2, "duo", 0)
+			for u = 3, 6 do
+				s:join(u, "four", 0)
+			end
+			local launches = s:tick(0)
+			expect(#launches).toBe(2)
+			expect(launches[1].queueId).toBe("duo")
+			expect(launches[2].queueId).toBe("four")
+			expect(launches[1].id ~= launches[2].id).toBe(true)
+		end)
+	end)
+end

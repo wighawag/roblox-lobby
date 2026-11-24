@@ -1,0 +1,12 @@
+[package]
+name = "wighawag/roblox-lobby"
+description = "Lobby, queues and party teleports between places, with Studio fallbacks and arrival checks"
+version = "0.1.0"
+license = "MIT"
+authors = ["wighawag"]
+realm = "shared"
+registry = "https://github.com/UpliftGames/wally-index"
+repository = "https://github.com/wighawag/roblox-lobby"
+include = ["src", "src/**", "default.project.json", "wally.toml", "LICENSE", "README.md"]
+
+[dependencies]
