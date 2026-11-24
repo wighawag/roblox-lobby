@@ -34,6 +34,20 @@ function RetryPolicy.onInitFailed(resultName: string, retriesSoFar: number): (st
 	return "give-up", resultName
 end
 
+-- A thrown TeleportAsync error that retrying cannot fix: invalid input, or an HTTP 4xx answer other than 429
+-- (measured live 2026-11-24: a nonexistent place id answers "HTTP 400 (Bad Request)").
+function RetryPolicy.isPermanentCallError(err: any): boolean
+	local s = tostring(err)
+	local code = string.match(s, "HTTP (%d%d%d)")
+	if code then
+		local n = tonumber(code) :: number
+		return n >= 400 and n < 500 and n ~= 429
+	end
+	return string.find(s, "Invalid placeId", 1, true) ~= nil
+		or string.find(s, "Players empty", 1, true) ~= nil
+		or string.find(s, "Incompatible Parameters", 1, true) ~= nil
+end
+
 -- What to tell the player whose teleport finally failed (they stay in the lobby).
 function RetryPolicy.playerMessage(reason: string): string
 	if reason == "Unauthorized" then
@@ -42,6 +56,8 @@ function RetryPolicy.playerMessage(reason: string): string
 		return "The game place was not found. Its place id in LobbyConfig may be wrong."
 	elseif reason == "GameFull" or reason == "GameEnded" then
 		return "That match is no longer available. Please queue again."
+	elseif reason == "permanent" then
+		return "The game place could not be reached: its place id is probably wrong."
 	elseif reason == "IsTeleporting" then
 		return "You are already being teleported."
 	end

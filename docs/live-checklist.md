@@ -7,7 +7,9 @@ What Studio cannot test: group teleports, real reserved servers, `PrivateServerI
 1. On telemaque: `nix develop`, then `lune run tests` and `lune run scripts/build-check` pass.
 2. Build both example places (`rojo build examples/lobby.project.json -o ...`, same for `game`), publish them into the test experience (lobby = start place, game = the other place), with the ids filled in `examples/shared/LobbyConfig.luau`.
 3. `scripts/roblox-lobby check examples/shared/LobbyConfig.luau`: every line `ok`.
-4. Player 1 is the operator in Sober on telemaque (`roblox-studio sober` or roblox-player's `headless-display.sh sober`). Player 2 is a second account on another device: see "For the second player" below.
+4. Player 1 is the operator in Sober on telemaque. Player 2 is a second account on another device: see "For the second player" below.
+
+Driving Sober on telemaque (measured 2026-11-24, Sober 1.8.0): launch it straight into the lobby with `headless-display.sh launch sh -c "env -u WAYLAND_DISPLAY flatpak --user run org.vinegarhq.Sober -- 'roblox://experiences/start?placeId=<lobby place id>'"`. Do not use `headless-display.sh sober` (its `--nosocket=wayland` makes a configured Sober refuse to start with "Permission Update Required"); unsetting `WAYLAND_DISPLAY` keeps Sober on X11 without touching its permissions. Leave "Allow Controller Access" off in Sober's settings (it asks for `--device=input`). Clicks only register with the pointer hovering first and the button held about 0.1 to 0.3 s (`xdotool mousemove X Y; sleep 0.3; mousedown 1; sleep 0.3; mouseup 1`). Server output: F9 opens the developer console; its Client/Server dropdown opens a picker in the middle of the screen, "Server" at about (960, 127). The Sober log (`$XDG_RUNTIME_DIR/roblox-player-display/sober.log`) shows `Teleported.` and `Joining game ... place <id>` for each place change.
 
 ## Solo (player 1 only)
 
@@ -33,7 +35,7 @@ What Studio cannot test: group teleports, real reserved servers, `PrivateServerI
 
 | # | do | expect |
 | --- | --- | --- |
-| F1 | set `places.game` to a place of ANOTHER experience, rebuild and publish the lobby only, step on a pad | `roblox-lobby check` FAILs first; in game: the message "The game place refused the teleport" and you stay in the lobby, able to queue again |
+| F1 | set `places.game` to a wrong id (e.g. `1`), rebuild and publish the lobby only, step on a pad | `roblox-lobby check` FAILs first (`no such place`); in game: the server log shows `TeleportAsync to place 1 failed (attempt 1): HTTP 400 (Bad Request)` and `not retrying: this error is permanent`, the player sees "The game place could not be reached: its place id is probably wrong." and stays in the lobby, able to queue again |
 | F2 | restore the right id, republish | S1 works again |
 
 ## For the second player (a kid, or the operator's second account)
@@ -51,4 +53,4 @@ You need: a Roblox account (the kid's own, or a new one made at roblox.com/signu
 
 | release | date | S1-S5 | G1-G5 | F1-F2 | notes |
 | --- | --- | --- | --- | --- | --- |
-| | | | | | |
+| 0.1.0-dev (f3521b6) | 2026-11-24 | pass | pending | pass | Sober 1.8.0 on telemaque, account ronan7777777. S1-S3: real production teleport (`Teleported.`, joined game place 135477523707348), server log `match 59fbbad9... ready (teleport): 1 player(s), 0 missing` and `MATCH READY source=teleport ... map=classic`, no errors or warnings. S4: Leave during the countdown hid the status, moved the player to ExitPos, no teleport. S5: launching the game place directly sent the player back to the lobby place within 4 s. F1 (place id 1): `roblox-lobby check` failed with `no such place`; live, TeleportAsync threw `HTTP 400 (Bad Request)` five times (16 s of retries) before releasing the player, so permanent errors are no longer retried and get a place-id message (fixed after this run, unit-tested, not yet re-run live). F2: right id restored and republished, the teleport worked again. |

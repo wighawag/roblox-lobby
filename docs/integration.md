@@ -157,6 +157,7 @@ Every line must start with `ok`. A `FAIL` line names the wrong id and why (e.g. 
 | `TeleportAsync to place ... failed (attempt n)` | a teleport call failed; it is retried | if it keeps failing: run `roblox-lobby check` |
 | player sees `The game place refused the teleport` | Roblox answered Unauthorized: usually a place of another experience | `roblox-lobby check` |
 | player sees `The game place was not found` | the place id is wrong | `roblox-lobby check` |
+| player sees `The game place could not be reached: its place id is probably wrong.` (log: `HTTP 400 (Bad Request)`, `not retrying: this error is permanent`) | the place id does not exist | `roblox-lobby check` |
 | `rejected <name>: no-teleport-data` | someone joined the game place directly | normal; they are sent to the lobby |
 | `rejected <name>: unknown-version` | the two places run different roblox-lobby versions | vendor the same version, publish both |
 | `rejected <name>: wrong-source-place` / `wrong-source-game` | the teleport did not come from this game's lobby | check the ids |

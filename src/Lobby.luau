@@ -264,7 +264,8 @@ function Lobby.start(rawConfig: any, options: Options?)
 		end
 
 		local teleportOptions = Teleport.options(env, matchId, envelope)
-		local ok, err = Teleport.call(env, placeId, players, teleportOptions, if env.isStudio then 1 else nil)
+		local ok, err, permanent =
+			Teleport.call(env, placeId, players, teleportOptions, if env.isStudio then 1 else nil)
 		if not ok then
 			if env.isStudio then
 				simulate(launch, party, envelope, "Studio refused the real teleport: " .. tostring(err))
@@ -272,7 +273,7 @@ function Lobby.start(rawConfig: any, options: Options?)
 			end
 			env.warn(`[RobloxLobby] party {matchId} could not be teleported: {err}`)
 			for _, userId in table.clone(launch.members) do
-				release(userId, launch.id, party, "call-failed")
+				release(userId, launch.id, party, if permanent then "permanent" else "call-failed")
 			end
 			return
 		end

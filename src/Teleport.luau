@@ -18,8 +18,14 @@ function Teleport.options(env: any, matchId: string?, teleportData: any): any
 end
 
 -- Calls TeleportAsync, retrying a thrown error up to `attempts` (default RetryPolicy.CALL_ATTEMPTS) times with backoff.
--- Returns (true, result) or (false, lastError).
-function Teleport.call(env: any, placeId: number, players: { any }, options: any, attempts: number?): (boolean, any)
+-- Returns (true, result) or (false, lastError, permanent).
+function Teleport.call(
+	env: any,
+	placeId: number,
+	players: { any },
+	options: any,
+	attempts: number?
+): (boolean, any, boolean?)
 	local lastErr
 	local limit = attempts or RetryPolicy.CALL_ATTEMPTS
 	for attempt = 1, limit do
@@ -31,11 +37,17 @@ function Teleport.call(env: any, placeId: number, players: { any }, options: any
 		end
 		lastErr = result
 		env.warn(`[RobloxLobby] TeleportAsync to place {placeId} failed (attempt {attempt}): {result}`)
+		if RetryPolicy.isPermanentCallError(result) then
+			env.warn(
+				`[RobloxLobby] not retrying: this error is permanent; check the place id with "roblox-lobby check" on the LobbyConfig`
+			)
+			return false, result, true
+		end
 		if attempt < limit then
 			env.wait(RetryPolicy.callBackoff(attempt))
 		end
 	end
-	return false, lastErr
+	return false, lastErr, false
 end
 
 return Teleport
