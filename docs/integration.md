@@ -132,7 +132,7 @@ Once both places are published (step 7), a solo Play of the lobby opened from Ro
 
 ## 7. Publish, fill in the ids, check
 
-1. Publish the lobby place as a NEW experience (its start place). Then publish the game place INTO THAT SAME experience as an additional place (in the publish dialog, pick the experience you just made, then "add a new place"). Never publish into another experience with a similar name.
+1. Publish the lobby place as a NEW experience: open the lobby's place file, File > Publish As > "Create new experience...", give it a name, Next. It becomes the experience's start place. Then open the game's place file, File > Publish As, click the tile of THAT experience, choose "Add as a new place", Create. Never pick another experience with a similar name. To publish an update later, the same dialog: the experience tile, then the place to overwrite, then Overwrite.
 2. Find the ids: in Studio, `print(game.GameId, game.PlaceId)` in the command bar of each published place, or the Creator Dashboard. `GameId` is the experience id.
 3. Fill in `experienceId`, `lobbyPlaceId` and `places` in `LobbyConfig.luau`, rebuild BOTH places, publish both again.
 4. Run the check (no Roblox login needed):

@@ -10,14 +10,14 @@ local function recorded(url: string): (boolean, any)
 	local u = string.match(url, "universes/v1/places/(%d+)/universe")
 	if u then
 		file = "universe-" .. u
-	elseif string.match(url, "games%?universeIds=(%d+)") then
-		file = "games-" .. string.match(url, "games%?universeIds=(%d+)")
 	elseif string.match(url, "universes/(%d+)/places") then
 		file = "places-" .. string.match(url, "universes/(%d+)/places")
+	elseif string.match(url, "develop.roblox.com/v1/universes/(%d+)$") then
+		file = "universeinfo-" .. string.match(url, "universes/(%d+)$")
 	end
 	local path = "tests/recorded/" .. tostring(file) .. ".json"
 	if not file or not fs.isFile(path) then
-		return true, { data = {} }
+		return false, "HTTP 400" -- what the API answers for an unknown universe
 	end
 	return true, serde.decode("json", fs.readFile(path))
 end
@@ -33,6 +33,13 @@ return function(T)
 			local r = PlaceCheck.run(Fixtures.config(), recorded)
 			expect(r.ok).toBe(true)
 			expect(string.find(joined(r), '"HIPS_Game" is in experience 9520747167', 1, true) ~= nil).toBe(true)
+		end)
+		it("passes for a PRIVATE experience (the roblox-lobby test experience)", function()
+			local c = Fixtures.config()
+			c.experienceId, c.lobbyPlaceId, c.places.game = 10778829653, 138124848909436, 135477523707348
+			local r = PlaceCheck.run(c, recorded)
+			expect(r.ok).toBe(true)
+			expect(string.find(joined(r), "(Private)", 1, true) ~= nil).toBe(true)
 		end)
 		it("flags a place of another experience", function()
 			local c = Fixtures.config()
@@ -54,10 +61,10 @@ return function(T)
 		end)
 		it("flags an unknown experience and unpublished ids", function()
 			local c = Fixtures.config()
-			c.experienceId = 42
-			expect(string.find(joined(PlaceCheck.run(c, recorded)), "experience 42: not found", 1, true) ~= nil).toBe(
-				true
-			)
+			c.experienceId = 99999999999999
+			expect(
+				string.find(joined(PlaceCheck.run(c, recorded)), "experience 99999999999999: not found", 1, true) ~= nil
+			).toBe(true)
 			c = Fixtures.config()
 			c.places.game = 0
 			expect(string.find(joined(PlaceCheck.run(c, recorded)), "still 0", 1, true) ~= nil).toBe(true)

@@ -7,7 +7,8 @@
 -- Endpoints (unauthenticated, checked 2026-11-24):
 --   https://apis.roblox.com/universes/v1/places/<placeId>/universe      -> {"universeId": n | null}
 --   https://develop.roblox.com/v1/universes/<universeId>/places?limit=100 -> {"data": [{id, name, universeId}]}
---   https://games.roblox.com/v1/games?universeIds=<universeId>          -> {"data": [{rootPlaceId, name, creator}]}
+--   https://develop.roblox.com/v1/universes/<universeId>                -> {name, rootPlaceId, privacyType, creatorName}
+-- (games.roblox.com/v1/games hides private experiences, so it is not used; the develop endpoints answer for both.)
 
 local Config = require("./Config")
 
@@ -43,13 +44,12 @@ function PlaceCheck.run(rawConfig: any, http: Http): Report
 	end
 
 	local exp = config.experienceId
-	local okGame, game = http(`https://games.roblox.com/v1/games?universeIds={exp}`)
-	local info = okGame and type(game) == "table" and type(game.data) == "table" and game.data[1] or nil
-	if not info then
+	local okInfo, info = http(`https://develop.roblox.com/v1/universes/{exp}`)
+	if not okInfo or type(info) ~= "table" or info.id ~= exp then
 		fail(`experience {exp}: not found (is experienceId the universe id, not a place id?)`)
 		return { ok = false, lines = lines }
 	end
-	pass(`experience {exp} is "{info.name}" by {info.creator and info.creator.name or "?"}`)
+	pass(`experience {exp} is "{info.name}" by {info.creatorName or "?"} ({info.privacyType or "?"})`)
 
 	local okPlaces, placesBody = http(`https://develop.roblox.com/v1/universes/{exp}/places?limit=100`)
 	local names = {}
