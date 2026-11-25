@@ -41,7 +41,8 @@ return {
 	queues = {
 		-- id: your name for it; place: a key of `places`
 		-- minPlayers: needed to start the countdown; maxPlayers: party size (at most 50)
-		-- countdown: seconds once minPlayers are in; launchWhenFull: go at once when full (default true)
+		-- countdown: seconds once minPlayers are in (default 15)
+		-- fullCountdown: once the queue is full, the time left is cut to this (default 5; 0 = go at once)
 		{ id = "duo", place = "game", minPlayers = 2, maxPlayers = 2, countdown = 10 },
 		{ id = "squad", place = "game", minPlayers = 2, maxPlayers = 4, countdown = 20 },
 	},
@@ -71,8 +72,15 @@ RobloxLobby.Pads.bind(lobby)
 
 Then give each queue a place in the world. Pick ONE of:
 
-- **Your own models (recommended).** Build each lobby area however the game looks, anywhere. On the area (a Part or a Model) add the tag `RobloxLobbyQueue` and the attribute `QueueId` set to a queue id from the config. Touching it joins that queue. Optional parts inside the area, by name: `Enter` (the part to touch, if not the whole area), `EnterPos` (where a joining player is moved), `ExitPos` (where a leaving player is moved: add one, otherwise a player who leaves stays on the pad), `CamPos` (camera while queued). Optional attributes: `TouchToJoin = false` (no touch), `Prompt = true` (a "Join" ProximityPrompt instead of, or as well as, touch). In a Rojo project file, for example: `"DuoPad": { "$className": "Part", "$properties": { "Tags": ["RobloxLobbyQueue"], "Anchored": true }, "$attributes": { "QueueId": "duo" } }` (checked with Rojo 7.6.1).
-- **Quick-start pads**, for a first playtest: in the server script, before `Pads.bind`, `RobloxLobby.Kit.pad(lobby, "duo", CFrame.new(-12, 0.5, -24))` (one per queue). Options: `theme = { color, material, size, textColor, font }`, `format = { players = function(view) ... end, time = ... }`, `billboard = <your BillboardGui>` (the kit only sets the `Text` of its descendants named `Players` and `Time`).
+- **Your own models (recommended).** Build each lobby area however the game looks, anywhere. On the area (a Part or a Model) add the tag `RobloxLobbyQueue` and the attribute `QueueId` set to a queue id from the config. Optional parts inside the area, by name:
+  - `Enter`: the part whose touch joins (with it, only `Enter` joins, so walls and decorations never do; without it, any part of the area joins).
+  - `EnterPos`: where a joining player is placed.
+  - `ExitPos`: where a leaving player is placed (add one; otherwise a player who presses Leave stays on the pad).
+  - `CamPos`: the camera while queued (used by `Client.defaultUi`).
+  - `Zone`: the inside of a booth, an invisible non-colliding part: a queued player who walks out of it leaves the queue within about half a second.
+
+  A walled booth, the HIPS pattern, is: walls and a floor (any names), an invisible non-colliding `Enter` across the doorway, `EnterPos` inside, `ExitPos` outside the door, `CamPos` looking in, and a `Zone` covering the inside. Optional attributes: `TouchToJoin = false` (no touch), `Prompt = true` (a "Join" ProximityPrompt). In a Rojo project file: `"DuoBooth": { "$className": "Model", "$properties": { "Tags": ["RobloxLobbyQueue"] }, "$attributes": { "QueueId": "duo" }, ...parts... }` (checked with Rojo 7.6.1).
+- **Quick-start booths or pads**, for a first playtest: in the server script, before `Pads.bind`, `RobloxLobby.Kit.booth(lobby, "duo", CFrame.new(-14, 0, -28))` (a walled booth with all the parts above, door on its local +Z side) or `RobloxLobby.Kit.pad(lobby, "duo", CFrame.new(-12, 0.5, -24))` (a flat pad). Options: `theme = { color, floorColor, material, size, textColor, font }`, `format = { players = function(view) ... end, time = ... }`, `billboard = <your BillboardGui>` (the kit only sets the `Text` of its descendants named `Players` and `Time`).
 - **Your own triggers** (buttons, menus, NPCs): call `lobby:join(player, "duo")` and `lobby:leave(player)` from the server, or `RobloxLobby.Client.join("duo")` / `Client.leave()` from the client.
 
 Client script, e.g. `StarterPlayer/StarterPlayerScripts/Lobby.client.luau`. Either the quick-start UI:

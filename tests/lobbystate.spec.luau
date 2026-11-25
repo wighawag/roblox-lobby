@@ -54,7 +54,7 @@ return function(T)
 			expect(#s:tick(32)).toBe(1)
 		end)
 
-		it("launches at once when full and launchWhenFull", function()
+		it("launches at once when full with fullCountdown 0", function()
 			local s = newState()
 			for u = 1, 4 do
 				s:join(u, "four", 0)
@@ -62,15 +62,32 @@ return function(T)
 			expect(#s:tick(0)).toBe(1)
 		end)
 
-		it("does not launch early when full without launchWhenFull", function()
+		it("shortens the countdown to fullCountdown (default 5 s) once full, and shows it", function()
+			local s = newState() -- duo: countdown 10, fullCountdown default 3
+			s:join(1, "duo", 0)
+			s:join(2, "duo", 3)
+			expect(s:view("duo", 3).secondsLeft).toBe(5)
+			expect(#s:tick(7.9)).toBe(0)
+			expect(#s:tick(8)).toBe(1)
+		end)
+
+		it("keeps the normal countdown when it ends sooner than fullCountdown", function()
 			local raw = Fixtures.config()
-			raw.queues =
-				{ { id = "q", place = "game", minPlayers = 1, maxPlayers = 2, countdown = 5, launchWhenFull = false } }
+			raw.queues = { { id = "q", place = "game", minPlayers = 1, maxPlayers = 2, countdown = 10 } }
 			local s = LobbyState.new(Config.assert(raw).queues)
 			s:join(1, "q", 0)
-			s:join(2, "q", 0)
-			expect(#s:tick(4)).toBe(0)
-			expect(#s:tick(5)).toBe(1)
+			s:join(2, "q", 9)
+			expect(s:view("q", 9).secondsLeft).toBe(1)
+			expect(#s:tick(10)).toBe(1)
+		end)
+
+		it("a full queue that loses a player goes back to the normal countdown, or stops below minPlayers", function()
+			local s = newState()
+			s:join(1, "duo", 0)
+			s:join(2, "duo", 0)
+			s:leave(2, 1)
+			expect(s:view("duo", 1).phase).toBe("waiting")
+			expect(#s:tick(20)).toBe(0)
 		end)
 
 		it("countdown 0 launches as soon as minPlayers are in", function()
@@ -85,7 +102,7 @@ return function(T)
 			local s = newState()
 			s:join(1, "duo", 0)
 			s:join(2, "duo", 0)
-			local l = s:tick(0)[1]
+			local l = s:tick(5)[1]
 			expect(s:isLaunching(1)).toBe(true)
 			local ok, reason = s:leave(1, 1)
 			expect(ok).toBe(false)
@@ -106,7 +123,7 @@ return function(T)
 			expect(id).toBe("four")
 			s:join(2, "duo", 0)
 			s:join(3, "duo", 0)
-			local l = s:tick(0)[1]
+			local l = s:tick(5)[1]
 			local where2, id2 = s:remove(2, 1)
 			expect(where2).toBe("launch")
 			expect(id2).toBe(l.id)
@@ -118,7 +135,7 @@ return function(T)
 			local s = newState()
 			s:join(1, "duo", 0)
 			s:join(2, "duo", 0)
-			local l = s:tick(0)[1]
+			local l = s:tick(5)[1]
 			expect(s:settle(l.id, 1)).toBe(false)
 			expect(s:isLaunching(1)).toBe(false)
 			expect(s:settle(l.id, 2)).toBe(true)
@@ -131,7 +148,7 @@ return function(T)
 			local s = newState()
 			s:join(1, "duo", 0)
 			s:join(2, "duo", 0)
-			local l = s:tick(0)[1]
+			local l = s:tick(5)[1]
 			s:join(3, "duo", 1) -- someone joined the reopened queue meanwhile
 			local requeued, freed = s:abort(l.id, 2)
 			expect(requeued).toEqual({ 1 })
@@ -139,8 +156,8 @@ return function(T)
 			expect(s:view("duo", 2).members).toEqual({ 1, 3 })
 			expect(s:isLaunching(2)).toBe(false)
 			expect(s:queueOf(2)).toBe(nil)
-			-- countdown restarts from the abort time
-			expect(s:view("duo", 2).secondsLeft).toBe(10)
+			-- the countdown restarts from the abort time; the queue is full again, so 5 s
+			expect(s:view("duo", 2).secondsLeft).toBe(5)
 		end)
 
 		it("handles several queues independently in one tick", function()
@@ -150,7 +167,7 @@ return function(T)
 			for u = 3, 6 do
 				s:join(u, "four", 0)
 			end
-			local launches = s:tick(0)
+			local launches = s:tick(5)
 			expect(#launches).toBe(2)
 			expect(launches[1].queueId).toBe("duo")
 			expect(launches[2].queueId).toBe("four")

@@ -7,6 +7,9 @@
 --   EnterPos where a joining player is moved (default: not moved)
 --   ExitPos  where a leaving player is moved (default: not moved)
 --   CamPos   the camera while queued (used by Client.defaultUi)
+--   Zone     the inside of a booth (an invisible, non-colliding part): a queued player whose character stays
+--            outside it for LEAVE_GRACE seconds leaves the queue, so walking out of a booth means leaving it
+-- Walls, floors and decorations can be any other parts: with an Enter part, only Enter joins.
 -- Optional attributes on the tagged instance:
 --   TouchToJoin (bool, default true), Prompt (bool, default false: a ProximityPrompt on Enter to join or leave)
 --
@@ -15,6 +18,16 @@
 local Pads = {}
 
 Pads.TAG = "RobloxLobbyQueue"
+Pads.LEAVE_GRACE = 0.3 -- seconds outside the Zone before a queued player is removed (measured live: a slower
+-- check let a player who walked out during a 3 s countdown be teleported anyway)
+Pads.CHECK_INTERVAL = 0.2
+
+local SPECIAL = { EnterPos = true, ExitPos = true, CamPos = true, Zone = true }
+
+-- Pure: is a point, given in the zone part's local space, inside a box of that size?
+function Pads.contains(size: { X: number, Y: number, Z: number }, p: { X: number, Y: number, Z: number }): boolean
+	return math.abs(p.X) <= size.X / 2 and math.abs(p.Y) <= size.Y / 2 and math.abs(p.Z) <= size.Z / 2
+end
 
 local function find(area: any, name: string): any
 	if area.Name == name then
@@ -57,7 +70,7 @@ function Pads.bind(lobby: any): any
 			table.insert(touchParts, area)
 		else
 			for _, d in area:GetDescendants() do
-				if d:IsA("BasePart") and d.Name ~= "EnterPos" and d.Name ~= "ExitPos" and d.Name ~= "CamPos" then
+				if d:IsA("BasePart") and not SPECIAL[d.Name] then
 					table.insert(touchParts, d)
 				end
 			end
@@ -132,8 +145,40 @@ function Pads.bind(lobby: any): any
 		end)
 	)
 
+	-- booths: a queued player who walks out of the Zone leaves the queue
+	local running = true
+	local outsideSince: { [number]: number } = {}
+	task.spawn(function()
+		while running do
+			task.wait(Pads.CHECK_INTERVAL)
+			local now = os.clock()
+			for queueId, areas in areasByQueue do
+				local zone = find(areas[1], "Zone")
+				local view = zone and lobby:view(queueId)
+				if view then
+					for _, userId in view.members do
+						local player = Players:GetPlayerByUserId(userId)
+						local root = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+						if root then
+							local inside = Pads.contains(zone.Size, zone.CFrame:PointToObjectSpace(root.Position))
+							if inside then
+								outsideSince[userId] = nil
+							elseif outsideSince[userId] == nil then
+								outsideSince[userId] = now
+							elseif now - outsideSince[userId] >= Pads.LEAVE_GRACE then
+								outsideSince[userId] = nil
+								lobby:leave(player)
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
+
 	return {
 		Disconnect = function()
+			running = false
 			for _, c in conns do
 				c:Disconnect()
 			end

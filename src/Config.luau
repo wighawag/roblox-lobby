@@ -15,7 +15,7 @@ export type QueueSpec = {
 	minPlayers: number,
 	maxPlayers: number,
 	countdown: number,
-	launchWhenFull: boolean,
+	fullCountdown: number,
 }
 
 export type Config = {
@@ -34,7 +34,7 @@ Config.MAX_PARTY = 50 -- TeleportAsync takes at most 50 players per call
 local TOP_KEYS =
 	{ experienceId = true, lobbyPlaceId = true, places = true, queues = true, arrival = true, studio = true }
 local QUEUE_KEYS =
-	{ id = true, place = true, minPlayers = true, maxPlayers = true, countdown = true, launchWhenFull = true }
+	{ id = true, place = true, minPlayers = true, maxPlayers = true, countdown = true, fullCountdown = true }
 local ARRIVAL_KEYS = { joinTimeout = true }
 local STUDIO_KEYS = { joinWindow = true, fakeMembers = true, teleport = true }
 
@@ -129,9 +129,9 @@ function Config.validate(raw: any): (boolean, any)
 			if type(countdown) ~= "number" or countdown < 0 then
 				table.insert(problems, where .. ".countdown must be a number of seconds, 0 or more")
 			end
-			local whenFull = if q.launchWhenFull == nil then true else q.launchWhenFull
-			if type(whenFull) ~= "boolean" then
-				table.insert(problems, where .. ".launchWhenFull must be true or false")
+			local fullCountdown = if q.fullCountdown == nil then 5 else q.fullCountdown
+			if type(fullCountdown) ~= "number" or fullCountdown < 0 then
+				table.insert(problems, where .. ".fullCountdown must be a number of seconds, 0 or more")
 			end
 			table.insert(queues, {
 				id = q.id,
@@ -139,7 +139,7 @@ function Config.validate(raw: any): (boolean, any)
 				minPlayers = minP,
 				maxPlayers = maxP,
 				countdown = countdown,
-				launchWhenFull = whenFull,
+				fullCountdown = fullCountdown,
 			})
 		end
 	end

@@ -9,8 +9,9 @@ return {
 		game = 135477523707348, -- built from game.project.json
 	},
 	queues = {
+		-- countdown: seconds once minPlayers are in; fullCountdown: seconds left once the queue is full (default 5)
 		{ id = "duo", place = "game", minPlayers = 2, maxPlayers = 2, countdown = 10 },
-		{ id = "four", place = "game", minPlayers = 1, maxPlayers = 4, countdown = 15, launchWhenFull = true },
+		{ id = "four", place = "game", minPlayers = 1, maxPlayers = 4, countdown = 15 },
 	},
 	arrival = { joinTimeout = 30 },
 	studio = { joinWindow = 3, fakeMembers = 0 },

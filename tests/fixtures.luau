@@ -9,7 +9,7 @@ function Fixtures.config(): any
 		places = { game = 106268450656854 },
 		queues = {
 			{ id = "duo", place = "game", minPlayers = 2, maxPlayers = 2, countdown = 10 },
-			{ id = "four", place = "game", minPlayers = 2, maxPlayers = 4, countdown = 20, launchWhenFull = true },
+			{ id = "four", place = "game", minPlayers = 2, maxPlayers = 4, countdown = 20, fullCountdown = 0 },
 		},
 	}
 end

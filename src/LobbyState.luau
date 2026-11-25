@@ -4,7 +4,8 @@
 -- asks for. Pure, so every rule here is unit-tested in Lune.
 --
 -- Per queue: "waiting" (fewer than minPlayers) -> "counting" (minPlayers reached; resets to "waiting" if it
--- drops below) -> a launch when the countdown ends, or at once when full and launchWhenFull. A launch takes the
+-- drops below) -> a launch when the countdown ends. Once the queue is full, the time left is cut to fullCountdown
+-- (if that is sooner); a full queue that loses a player goes back to the normal countdown. A launch takes the
 -- queued players out of the queue into a frozen party, so the queue can fill again while the party teleports.
 -- Members of a launching party cannot join or leave queues until the adapter completes, aborts or releases them.
 
@@ -30,6 +31,7 @@ type Queue = {
 	spec: Config.QueueSpec,
 	members: { number }, -- in join order
 	countingSince: number?,
+	fullSince: number?,
 }
 
 local LobbyState = {}
@@ -57,7 +59,7 @@ function LobbyState.new(queueSpecs: { Config.QueueSpec }): LobbyState
 		_nextLaunch = 1,
 	}, LobbyState)
 	for _, spec in queueSpecs do
-		self._queues[spec.id] = { spec = spec, members = {}, countingSince = nil }
+		self._queues[spec.id] = { spec = spec, members = {}, countingSince = nil, fullSince = nil }
 		table.insert(self._order, spec.id)
 	end
 	return self
@@ -71,6 +73,25 @@ local function updateCounting(q: Queue, now: number)
 	else
 		q.countingSince = nil
 	end
+	if #q.members >= q.spec.maxPlayers then
+		if q.fullSince == nil then
+			q.fullSince = now
+		end
+	else
+		q.fullSince = nil
+	end
+end
+
+-- Seconds left before launch, or nil when not counting.
+local function secondsLeft(q: Queue, now: number): number?
+	if q.countingSince == nil then
+		return nil
+	end
+	local left = q.spec.countdown - (now - q.countingSince)
+	if q.fullSince ~= nil then
+		left = math.min(left, q.spec.fullCountdown - (now - q.fullSince))
+	end
+	return math.max(0, left)
 end
 
 -- Returns (true) or (false, reason): "unknown-queue", "already-queued", "launching", "full".
@@ -140,9 +161,8 @@ function LobbyState.tick(self: LobbyState, now: number): { Launch }
 	for _, queueId in self._order do
 		local q = self._queues[queueId]
 		updateCounting(q, now)
-		local full = #q.members >= q.spec.maxPlayers
-		local due = q.countingSince ~= nil and now - q.countingSince >= q.spec.countdown
-		if (full and q.spec.launchWhenFull) or due then
+		local left = secondsLeft(q, now)
+		if left ~= nil and left <= 0 then
 			local launch: Launch = {
 				id = self._nextLaunch,
 				queueId = queueId,
@@ -157,6 +177,7 @@ function LobbyState.tick(self: LobbyState, now: number): { Launch }
 			end
 			q.members = {}
 			q.countingSince = nil
+			q.fullSince = nil
 			table.insert(out, launch)
 		end
 	end
@@ -216,6 +237,7 @@ function LobbyState.abort(self: LobbyState, launchId: number, now: number): ({ n
 	q.members = members
 	-- the countdown starts again from now, it does not resume
 	q.countingSince = nil
+	q.fullSince = nil
 	updateCounting(q, now)
 	return requeued, freed
 end
@@ -233,17 +255,13 @@ function LobbyState.view(self: LobbyState, queueId: string, now: number): QueueV
 	if not q then
 		return nil
 	end
-	local secondsLeft = nil
-	if q.countingSince ~= nil then
-		secondsLeft = math.max(0, q.spec.countdown - (now - q.countingSince))
-	end
 	return {
 		id = queueId,
 		members = table.clone(q.members),
 		capacity = q.spec.maxPlayers,
 		minPlayers = q.spec.minPlayers,
 		phase = if q.countingSince ~= nil then "counting" else "waiting",
-		secondsLeft = secondsLeft,
+		secondsLeft = secondsLeft(q, now),
 	}
 end
 

@@ -1,4 +1,4 @@
--- Example lobby place, server. The package does the logic; this script only places two quick-start pads.
+-- Example lobby place, server. The package does the logic; this script only places two quick-start booths.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RobloxLobby = require(ReplicatedStorage.Packages.RobloxLobby)
 local config = require(ReplicatedStorage.LobbyConfig)
@@ -9,8 +9,9 @@ local lobby = RobloxLobby.Lobby.start(config, {
 	end,
 })
 
-RobloxLobby.Kit.pad(lobby, "duo", CFrame.new(-12, 0.5, -24))
-RobloxLobby.Kit.pad(lobby, "four", CFrame.new(12, 0.5, -24), { theme = { color = Color3.fromRGB(80, 140, 255) } })
+-- two walled booths, doors facing the spawn (a booth's door is on its local +Z side)
+RobloxLobby.Kit.booth(lobby, "duo", CFrame.new(-14, 0, -28))
+RobloxLobby.Kit.booth(lobby, "four", CFrame.new(14, 0, -28), { theme = { color = Color3.fromRGB(80, 140, 255) } })
 RobloxLobby.Pads.bind(lobby)
 
 lobby.Launched:Connect(function(party)
