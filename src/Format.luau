@@ -7,8 +7,9 @@ export type View = {
 	count: number,
 	capacity: number,
 	minPlayers: number,
-	phase: string, -- "waiting" | "counting"
+	phase: string, -- "waiting" | "counting" | "creating"
 	secondsLeft: number?, -- nil unless counting
+	host: number?, -- size = "host": the host's user id
 }
 
 local Format = {}
@@ -28,6 +29,9 @@ end
 
 -- One line for a status bar.
 function Format.status(v: View): string
+	if v.phase == "creating" then
+		return "Creating the party..."
+	end
 	if v.phase == "counting" and v.secondsLeft then
 		local s = math.ceil(v.secondsLeft)
 		if s <= 0 then
@@ -70,6 +74,7 @@ function Format.fromAttributes(id: string, attrs: { [string]: any }): View
 		minPlayers = attrs.MinPlayers or 0,
 		phase = attrs.Phase or "waiting",
 		secondsLeft = if type(seconds) == "number" and seconds >= 0 then seconds else nil,
+		host = if type(attrs.Host) == "number" and attrs.Host ~= 0 then attrs.Host else nil,
 	}
 end
 

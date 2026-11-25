@@ -2,6 +2,7 @@
 -- A fake Roblox world for adapter tests: a manual clock with a cooperative scheduler, Players, TeleportService,
 -- HttpService, Instances with attributes, RemoteEvents. Only what Lobby.luau and Arrival.luau use.
 
+local serde = require("@lune/serde")
 local Signal = require("../src/Signal")
 
 local Fakes = {}
@@ -171,7 +172,7 @@ function Fakes.world(over: any?)
 			table.insert(w.warnings, table.concat({ ... }, " "))
 		end,
 		jsonEncode = function(v: any)
-			return tostring(v)
+			return serde.encode("json", v)
 		end,
 	}
 	w.Players = Players

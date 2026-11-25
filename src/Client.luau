@@ -36,7 +36,23 @@ function Client.onNotice(callback: (message: string) -> ()): any
 	return remotes().Notice.OnClientEvent:Connect(callback)
 end
 
--- Calls callback(view) now and on every change. view: Format.View plus `members` (user ids).
+-- size = "host": the host's choice for the party: { size = n, min = m?, options = { [id] = choice }? }.
+function Client.createParty(queueId: string, choice: { size: number, min: number?, options: { [string]: string }? })
+	remotes().Request:FireServer("configure", queueId, choice)
+end
+
+local function decode(s: any): any
+	if type(s) ~= "string" or s == "" then
+		return nil
+	end
+	local HttpService = (game :: any):GetService("HttpService")
+	local ok, v = pcall(HttpService.JSONDecode, HttpService, s)
+	return if ok then v else nil
+end
+
+-- Calls callback(view) now and on every change. view: Format.View plus `members` (user ids), `sizeMode`
+-- ("fixed" | "host"), `maxPlayers`, `hostMin`, `leave` ("walk" | "button"), `hostOptions` (the config's list of
+-- { id, label, choices }) and `options` (the host's choices, once made).
 -- Returns a connection-like object with :Disconnect().
 function Client.observe(queueId: string, callback: (view: any) -> ()): any
 	local folder = remotes():WaitForChild("Queues"):WaitForChild(queueId)
@@ -47,6 +63,12 @@ function Client.observe(queueId: string, callback: (view: any) -> ()): any
 			table.insert(members, tonumber(id))
 		end
 		view.members = members
+		view.sizeMode = folder:GetAttribute("SizeMode") or "fixed"
+		view.maxPlayers = folder:GetAttribute("MaxPlayers") or view.capacity
+		view.hostMin = folder:GetAttribute("HostMin") == true
+		view.leave = folder:GetAttribute("Leave") or "walk"
+		view.hostOptions = decode(folder:GetAttribute("HostOptions")) or {}
+		view.options = decode(folder:GetAttribute("Options"))
 		callback(view)
 	end
 	fire()
@@ -91,6 +113,148 @@ function Client.onMyQueueChanged(callback: (queueId: string?) -> ()): any
 	}
 end
 
+-- The default "Create Party" dialog for the host of a size = "host" queue: party size buttons, an optional
+-- minimum row (hostMin), one row per host option (click to cycle its choices), and a Create button that calls
+-- Client.createParty. Returns the Frame (destroy it to close). Used by defaultUi; a game can build its own dialog
+-- from Client.observe (view.phase == "creating", view.host, view.maxPlayers, view.hostOptions) instead.
+function Client.partyDialog(parent: any, queueId: string, view: any, theme: any?): any
+	local t = theme or {}
+	local font = t.font or Enum.Font.GothamBold
+	local textColor = t.text or Color3.new(1, 1, 1)
+	local accent = t.button or Color3.fromRGB(70, 170, 110)
+	local idle = Color3.fromRGB(70, 70, 85)
+	local maxPlayers = view.maxPlayers or view.capacity
+	local size = maxPlayers
+	local min = nil
+	local choices = {}
+	for _, o in view.hostOptions or {} do
+		choices[o.id] = 1
+	end
+
+	local frame = Instance.new("Frame")
+	frame.Name = "CreateParty"
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+	frame.Size = UDim2.new(0, 460, 0, 0)
+	frame.AutomaticSize = Enum.AutomaticSize.Y
+	frame.BackgroundColor3 = t.background or Color3.fromRGB(20, 20, 28)
+	frame.BackgroundTransparency = 0.1
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 8)
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = frame
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop, pad.PaddingBottom = UDim.new(0, 12), UDim.new(0, 12)
+	pad.Parent = frame
+
+	local order = 0
+	local function label(text: string, height: number)
+		order += 1
+		local l = Instance.new("TextLabel")
+		l.LayoutOrder = order
+		l.Size = UDim2.new(1, -24, 0, height)
+		l.BackgroundTransparency = 1
+		l.Text = text
+		l.TextColor3 = textColor
+		l.Font = font
+		l.TextScaled = true
+		l.Parent = frame
+		return l
+	end
+	local function row()
+		order += 1
+		local r = Instance.new("Frame")
+		r.LayoutOrder = order
+		r.Size = UDim2.new(1, -24, 0, 44)
+		r.BackgroundTransparency = 1
+		local l = Instance.new("UIListLayout")
+		l.FillDirection = Enum.FillDirection.Horizontal
+		l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		l.Padding = UDim.new(0, 6)
+		l.Parent = r
+		r.Parent = frame
+		return r
+	end
+	local function button(container: any, text: string, width: number): any
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.new(0, width, 1, 0)
+		b.BackgroundColor3 = idle
+		b.Text = text
+		b.TextColor3 = textColor
+		b.Font = font
+		b.TextScaled = true
+		b.Parent = container
+		return b
+	end
+
+	label("Create Party", 34)
+	label("Party size", 24)
+	local sizeRow = row()
+	local sizeButtons = {}
+	local minButtons = {}
+	local function refresh()
+		for n, b in sizeButtons do
+			b.BackgroundColor3 = if n == size then accent else idle
+		end
+		for n, b in minButtons do
+			b.BackgroundColor3 = if n == (min or size) then accent else idle
+			b.Visible = n <= size
+		end
+	end
+	for n = 1, maxPlayers do
+		local b = button(sizeRow, tostring(n), 44)
+		sizeButtons[n] = b
+		b.Activated:Connect(function()
+			size = n
+			if min and min > size then
+				min = size
+			end
+			refresh()
+		end)
+	end
+	if view.hostMin then
+		label("Start with at least", 22)
+		local minRow = row()
+		for n = 1, maxPlayers do
+			local b = button(minRow, tostring(n), 44)
+			minButtons[n] = b
+			b.Activated:Connect(function()
+				min = n
+				refresh()
+			end)
+		end
+	end
+	for _, o in view.hostOptions or {} do
+		local r = row()
+		local name = button(r, o.label or o.id, 180)
+		name.BackgroundTransparency = 1
+		name.Active = false
+		local value = button(r, o.choices[1], 200)
+		value.Activated:Connect(function()
+			choices[o.id] = choices[o.id] % #o.choices + 1
+			value.Text = o.choices[choices[o.id]]
+		end)
+	end
+	local createRow = row()
+	local create = button(createRow, "Create", 220)
+	create.BackgroundColor3 = accent
+	create.Activated:Connect(function()
+		local options = {}
+		for _, o in view.hostOptions or {} do
+			options[o.id] = o.choices[choices[o.id]]
+		end
+		Client.createParty(queueId, {
+			size = size,
+			min = if view.hostMin then (min or size) else nil,
+			options = options,
+		})
+	end)
+	refresh()
+	frame.Parent = parent
+	return frame
+end
+
 export type UiOptions = {
 	-- your own ScreenGui to use instead of the default one; it may contain a TextLabel "Status" and a
 	-- GuiButton "Leave" (both optional): the kit only sets Status.Text and toggles Leave.Visible
@@ -104,6 +268,7 @@ export type UiOptions = {
 	}?,
 	format: { [string]: (any) -> string }?, -- overrides of Format (status, leave)
 	camera: boolean?, -- default true: while queued, look through the area's CamPos part if it has one
+	partyDialog: boolean?, -- default true: show Client.partyDialog to the host of a size = "host" queue
 }
 
 -- The quick-start kit: a status line and a Leave button while the local player is queued, a notice line for the
@@ -182,6 +347,7 @@ function Client.defaultUi(options: UiOptions?): any
 	end)
 
 	local observing: any = nil
+	local dialog: any = nil
 	local cameraSet = false
 	local CollectionService = g:GetService("CollectionService")
 	local function areaCam(queueId: string): any
@@ -197,9 +363,22 @@ function Client.defaultUi(options: UiOptions?): any
 			observing:Disconnect()
 			observing = nil
 		end
+		if dialog then
+			dialog:Destroy()
+			dialog = nil
+		end
 		local camera = workspace.CurrentCamera
 		if queueId then
 			observing = Client.observe(queueId, function(view)
+				if opts.partyDialog ~= false then
+					local mine = view.phase == "creating" and view.host == player.UserId
+					if mine and not dialog then
+						dialog = Client.partyDialog(gui, queueId, view, theme)
+					elseif not mine and dialog then
+						dialog:Destroy()
+						dialog = nil
+					end
+				end
 				if status then
 					status.Text = fmt.status(view)
 					status.Visible = status.Text ~= ""

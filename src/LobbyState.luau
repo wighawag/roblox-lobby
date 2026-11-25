@@ -8,6 +8,11 @@
 -- (if that is sooner); a full queue that loses a player goes back to the normal countdown. A launch takes the
 -- queued players out of the queue into a frozen party, so the queue can fill again while the party teleports.
 -- Members of a launching party cannot join or leave queues until the adapter completes, aborts or releases them.
+--
+-- size = "host": the first player into an empty queue is its host; the queue is "creating" (closed to others)
+-- until the host calls configure (party size, optionally a minimum, host options) or hostTimeout passes (then:
+-- maxPlayers, first choice of each option). The queue then fills to that size. If the host leaves, the next
+-- member becomes host; an empty queue resets.
 
 local Config = require("./Config")
 
@@ -16,15 +21,22 @@ export type QueueView = {
 	members: { number },
 	capacity: number,
 	minPlayers: number,
-	phase: string, -- "waiting" | "counting"
+	phase: string, -- "waiting" | "counting" | "creating" (size = "host": the host is choosing)
 	secondsLeft: number?, -- while counting
+	host: number?, -- size = "host"
+	options: { [string]: string }?, -- size = "host": the host's choices
 }
+
+export type Choice = { size: number, min: number?, options: { [string]: string }? }
 
 export type Launch = {
 	id: number,
 	queueId: string,
 	place: string,
 	members: { number },
+	options: { [string]: string }?,
+	target: number?, -- size = "host": the chosen size and minimum, restored if the launch is aborted
+	targetMin: number?,
 }
 
 type Queue = {
@@ -32,6 +44,11 @@ type Queue = {
 	members: { number }, -- in join order
 	countingSince: number?,
 	fullSince: number?,
+	host: number?,
+	creatingSince: number?, -- the host is choosing
+	target: number?, -- chosen size
+	targetMin: number?,
+	options: { [string]: string }?,
 }
 
 local LobbyState = {}
@@ -65,15 +82,31 @@ function LobbyState.new(queueSpecs: { Config.QueueSpec }): LobbyState
 	return self
 end
 
+local function maxOf(q: Queue): number
+	return q.target or q.spec.maxPlayers
+end
+
+local function minOf(q: Queue): number
+	return q.targetMin or q.spec.minPlayers
+end
+
+local function resetHost(q: Queue)
+	q.host, q.creatingSince, q.target, q.targetMin, q.options = nil, nil, nil, nil, nil
+end
+
 local function updateCounting(q: Queue, now: number)
-	if #q.members >= q.spec.minPlayers then
+	if q.creatingSince ~= nil then
+		q.countingSince, q.fullSince = nil, nil
+		return
+	end
+	if #q.members >= minOf(q) then
 		if q.countingSince == nil then
 			q.countingSince = now
 		end
 	else
 		q.countingSince = nil
 	end
-	if #q.members >= q.spec.maxPlayers then
+	if #q.members >= maxOf(q) then
 		if q.fullSince == nil then
 			q.fullSince = now
 		end
@@ -94,7 +127,7 @@ local function secondsLeft(q: Queue, now: number): number?
 	return math.max(0, left)
 end
 
--- Returns (true) or (false, reason): "unknown-queue", "already-queued", "launching", "full".
+-- Returns (true) or (false, reason): "unknown-queue", "already-queued", "launching", "full", "creating".
 function LobbyState.join(self: LobbyState, userId: number, queueId: string, now: number): (boolean, string?)
 	local q = self._queues[queueId]
 	if not q then
@@ -106,8 +139,16 @@ function LobbyState.join(self: LobbyState, userId: number, queueId: string, now:
 	if self._where[userId] then
 		return false, "already-queued"
 	end
-	if #q.members >= q.spec.maxPlayers then
+	if q.creatingSince ~= nil then
+		return false, "creating"
+	end
+	if #q.members >= maxOf(q) then
 		return false, "full"
+	end
+	if q.spec.size == "host" and #q.members == 0 then
+		resetHost(q)
+		q.host = userId
+		q.creatingSince = now
 	end
 	table.insert(q.members, userId)
 	self._where[userId] = queueId
@@ -131,8 +172,87 @@ function LobbyState.leave(self: LobbyState, userId: number, now: number): (boole
 		table.remove(q.members, i)
 	end
 	self._where[userId] = nil
+	if #q.members == 0 then
+		resetHost(q)
+	elseif q.host == userId then
+		q.host = q.members[1]
+	end
 	updateCounting(q, now)
 	return true, queueId
+end
+
+local function applyChoice(q: Queue, choice: Choice): (boolean, string?)
+	local spec = q.spec
+	local size = choice.size
+	if type(size) ~= "number" or size % 1 ~= 0 or size < 1 or size > spec.maxPlayers then
+		return false, "bad-size"
+	end
+	local min = size
+	if choice.min ~= nil then
+		if not spec.hostMin then
+			return false, "bad-min"
+		end
+		min = choice.min :: number
+		if type(min) ~= "number" or min % 1 ~= 0 or min < 1 or min > size then
+			return false, "bad-min"
+		end
+	end
+	local given = choice.options or {}
+	if type(given) ~= "table" then
+		return false, "bad-option"
+	end
+	local known = {}
+	local options = {}
+	for _, o in spec.hostOptions do
+		known[o.id] = true
+		local v = given[o.id]
+		if v == nil then
+			options[o.id] = o.choices[1]
+		elseif table.find(o.choices, v) then
+			options[o.id] = v
+		else
+			return false, "bad-option"
+		end
+	end
+	for k in given do
+		if not known[k] then
+			return false, "bad-option"
+		end
+	end
+	q.target, q.targetMin, q.options, q.creatingSince = size, min, options, nil
+	return true, nil
+end
+
+-- size = "host": the host's choice. Returns (true) or (false, reason): "unknown-queue", "not-host-mode",
+-- "not-host", "not-creating", "bad-size", "bad-min", "bad-option".
+function LobbyState.configure(
+	self: LobbyState,
+	userId: number,
+	queueId: string,
+	choice: Choice,
+	now: number
+): (boolean, string?)
+	local q = self._queues[queueId]
+	if not q then
+		return false, "unknown-queue"
+	end
+	if q.spec.size ~= "host" then
+		return false, "not-host-mode"
+	end
+	if q.host ~= userId then
+		return false, "not-host"
+	end
+	if q.creatingSince == nil then
+		return false, "not-creating"
+	end
+	if type(choice) ~= "table" then
+		return false, "bad-size"
+	end
+	local ok, reason = applyChoice(q, choice)
+	if ok then
+		updateCounting(q, now)
+	end
+	return ok, reason
 end
 
 -- The player left the server (PlayerRemoving): removed from wherever they are, queue or launching party.
@@ -160,6 +280,9 @@ function LobbyState.tick(self: LobbyState, now: number): { Launch }
 	local out = {}
 	for _, queueId in self._order do
 		local q = self._queues[queueId]
+		if q.creatingSince ~= nil and now - q.creatingSince >= q.spec.hostTimeout then
+			applyChoice(q, { size = q.spec.maxPlayers })
+		end
 		updateCounting(q, now)
 		local left = secondsLeft(q, now)
 		if left ~= nil and left <= 0 then
@@ -168,6 +291,9 @@ function LobbyState.tick(self: LobbyState, now: number): { Launch }
 				queueId = queueId,
 				place = q.spec.place,
 				members = q.members,
+				options = q.options,
+				target = q.target,
+				targetMin = q.targetMin,
 			}
 			self._nextLaunch += 1
 			self._launches[launch.id] = launch
@@ -178,6 +304,7 @@ function LobbyState.tick(self: LobbyState, now: number): { Launch }
 			q.members = {}
 			q.countingSince = nil
 			q.fullSince = nil
+			resetHost(q)
 			table.insert(out, launch)
 		end
 	end
@@ -220,7 +347,7 @@ function LobbyState.abort(self: LobbyState, launchId: number, now: number): ({ n
 	self._launches[launchId] = nil
 	local q = self._queues[l.queueId]
 	local requeued, freed = {}, {}
-	local room = q.spec.maxPlayers - #q.members
+	local room = maxOf(q) - #q.members
 	for _, userId in l.members do
 		self._launchOf[userId] = nil
 		if #requeued < room then
@@ -235,6 +362,13 @@ function LobbyState.abort(self: LobbyState, launchId: number, now: number): ({ n
 		table.insert(members, userId)
 	end
 	q.members = members
+	if q.spec.size == "host" and q.host == nil and #members > 0 then
+		-- the queue was reset by the launch: give it back its host and choices
+		q.host = members[1]
+		q.options = l.options
+		q.target = l.target
+		q.targetMin = l.targetMin
+	end
 	-- the countdown starts again from now, it does not resume
 	q.countingSince = nil
 	q.fullSince = nil
@@ -258,10 +392,12 @@ function LobbyState.view(self: LobbyState, queueId: string, now: number): QueueV
 	return {
 		id = queueId,
 		members = table.clone(q.members),
-		capacity = q.spec.maxPlayers,
-		minPlayers = q.spec.minPlayers,
-		phase = if q.countingSince ~= nil then "counting" else "waiting",
+		capacity = maxOf(q),
+		minPlayers = minOf(q),
+		phase = if q.creatingSince ~= nil then "creating" elseif q.countingSince ~= nil then "counting" else "waiting",
 		secondsLeft = secondsLeft(q, now),
+		host = q.host,
+		options = if q.options then table.clone(q.options) else nil,
 	}
 end
 

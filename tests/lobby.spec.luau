@@ -273,6 +273,63 @@ return function(T)
 		end)
 	end)
 
+	T.describe("Lobby adapter, host party", function()
+		local function hostSetup()
+			local raw = Fixtures.config()
+			table.insert(raw.queues, {
+				id = "party",
+				place = "game",
+				minPlayers = 1,
+				maxPlayers = 5,
+				size = "host",
+				hostOptions = { { id = "map", choices = { "Random", "Snow" } } },
+			})
+			local w = Fakes.world()
+			local lobby = Lobby.start(raw, { env = w.env })
+			return w, lobby
+		end
+
+		it("replicates the host, the chosen size and options, and carries them to the game", function()
+			local w, lobby = hostSetup()
+			local a, b = w.addPlayer(1), w.addPlayer(2)
+			lobby:join(a, "party")
+			local f = w.instance("party")
+			expect(f:GetAttribute("Phase")).toBe("creating")
+			expect(f:GetAttribute("Host")).toBe(1)
+			expect(f:GetAttribute("SizeMode")).toBe("host")
+			expect(string.find(f:GetAttribute("HostOptions"), "Snow", 1, true) ~= nil).toBe(true)
+			local ok, reason = lobby:join(b, "party")
+			expect(ok).toBe(false)
+			expect(Lobby.explainJoin(reason)).toBe("The party is being created: wait for its host to choose.")
+			-- the host answers through the remote
+			w.instance("Request").OnServerEvent:Fire(a, "configure", "party", { size = 2, options = { map = "Snow" } })
+			expect(f:GetAttribute("Capacity")).toBe(2)
+			expect(f:GetAttribute("Phase")).toBe("waiting")
+			expect(string.find(f:GetAttribute("Options"), "Snow", 1, true) ~= nil).toBe(true)
+			expect(lobby:join(b, "party")).toBe(true)
+			w.advance(5)
+			lobby:_step()
+			local data = w.teleports[1].options:GetTeleportData()
+			expect(data.options).toEqual({ map = "Snow" })
+			expect(#data.members).toBe(2)
+		end)
+
+		it("rejects a configure from a non-host or with bad values, with a notice", function()
+			local w, lobby = hostSetup()
+			local a, b = w.addPlayer(1), w.addPlayer(2)
+			lobby:join(a, "party")
+			local request = w.instance("Request")
+			request.OnServerEvent:Fire(b, "configure", "party", { size = 2 })
+			w.advance(1)
+			request.OnServerEvent:Fire(a, "configure", "party", { size = 9 })
+			w.advance(1)
+			request.OnServerEvent:Fire(a, "configure", "party", "nonsense")
+			local sent = w.instance("Notice").sent
+			expect(#sent).toBe(3)
+			expect(w.instance("party"):GetAttribute("Phase")).toBe("creating")
+		end)
+	end)
+
 	T.describe("Lobby adapter in Studio", function()
 		it("simulates the teleport for a local file and releases the party", function()
 			local w, lobby, ev = setup({ isStudio = true, gameId = 0, placeId = 0 })

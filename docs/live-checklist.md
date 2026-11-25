@@ -31,6 +31,15 @@ Driving Sober on telemaque (measured 2026-11-24, Sober 1.8.0): launch it straigh
 | G4 | both in "duo"; player 2 closes Roblox at the very end of the countdown | player 1 arrives; log shows `missing=1` after 30 s at most (hard to time by hand; covered by the adapter tests) |
 | G5 | both on "duo" twice in a row (two matches) | each match is its own server (different match ids in the log) |
 
+## Host party and button-only leave (the blue booth: size = "host", leave = "button")
+
+| # | do | expect |
+| --- | --- | --- |
+| H1 | player 1 walks into the BLUE booth | the "Create Party" dialog: sizes 1 to 5, Map (Random/Snow/Volcanic/Jungle), Create |
+| H2 | player 2 tries to walk in while player 1 is choosing | player 2 is not added and sees "The party is being created: wait for its host to choose." |
+| H3 | player 1 picks size 2 and a map, Create; player 2 walks in | "Starting in 5 s (2/2)", both teleported; game log `MATCH READY ... host map=<the map>` |
+| H4 | in the blue booth, walk and jump at the doorway | you stay in the booth and in the party; only the red Leave button takes you out (to the spot outside the door) |
+
 ## Failure path (operator, before restoring)
 
 | # | do | expect |

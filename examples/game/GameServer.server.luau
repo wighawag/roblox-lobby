@@ -19,7 +19,7 @@ arrival.Ready:Connect(function(match)
 		table.insert(names, p.Name)
 	end
 	print(
-		`[Example] MATCH READY source={match.source} players={table.concat(names, ",")} missing={#match.missing} map={match.data and match.data.map}`
+		`[Example] MATCH READY source={match.source} players={table.concat(names, ",")} missing={#match.missing} map={match.data and match.data.map} host map={match.hostOptions and match.hostOptions.map}`
 	)
 end)
 

@@ -11,7 +11,19 @@ return {
 	queues = {
 		-- countdown: seconds once minPlayers are in; fullCountdown: seconds left once the queue is full (default 5)
 		{ id = "duo", place = "game", minPlayers = 2, maxPlayers = 2, countdown = 10 },
-		{ id = "four", place = "game", minPlayers = 1, maxPlayers = 4, countdown = 15 },
+		-- a party like 99 Nights in the Forest: the first player in chooses the size (1 to 5) and the map; only the
+		-- Leave button leaves (walking or jumping out does not)
+		{
+			id = "four",
+			place = "game",
+			minPlayers = 1,
+			maxPlayers = 5,
+			size = "host",
+			leave = "button",
+			hostOptions = {
+				{ id = "map", label = "Map", choices = { "Random", "Snow", "Volcanic", "Jungle" } },
+			},
+		},
 	},
 	arrival = { joinTimeout = 30 },
 	studio = { joinWindow = 3, fakeMembers = 0 },

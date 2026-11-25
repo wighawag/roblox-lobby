@@ -19,6 +19,19 @@ local Teleport = require("./Teleport")
 
 local Lobby = {}
 
+local JOIN_REFUSED = {
+	full = "This party is full.",
+	creating = "The party is being created: wait for its host to choose.",
+	launching = "You are already being teleported.",
+	["already-queued"] = "You are already in a party.",
+	["unknown-queue"] = "This party does not exist.",
+}
+
+-- A short sentence for the player about why a join was refused.
+function Lobby.explainJoin(reason: string): string
+	return JOIN_REFUSED[reason] or ("Cannot join: " .. reason)
+end
+
 Lobby.REMOTES_NAME = "RobloxLobbyRemotes"
 Lobby.TICK = 0.2 -- seconds between state updates
 Lobby.REQUEST_INTERVAL = 0.25 -- per-player rate limit of client join/leave requests
@@ -35,6 +48,20 @@ local function viewEquals(a: any, b: any): boolean
 	end
 	if a.phase ~= b.phase or #a.members ~= #b.members then
 		return false
+	end
+	if a.host ~= b.host or a.capacity ~= b.capacity or a.minPlayers ~= b.minPlayers then
+		return false
+	end
+	local ao, bo = a.options or {}, b.options or {}
+	for k, v in ao do
+		if bo[k] ~= v then
+			return false
+		end
+	end
+	for k in bo do
+		if ao[k] == nil then
+			return false
+		end
 	end
 	-- whole seconds only, so Changed fires about once per second while counting
 	local sa = if a.secondsLeft then math.ceil(a.secondsLeft) else -1
@@ -101,6 +128,13 @@ function Lobby.start(rawConfig: any, options: Options?)
 		f.Name = q.id
 		f:SetAttribute("Capacity", q.maxPlayers)
 		f:SetAttribute("MinPlayers", q.minPlayers)
+		f:SetAttribute("MaxPlayers", q.maxPlayers)
+		f:SetAttribute("SizeMode", q.size)
+		f:SetAttribute("Leave", q.leave)
+		f:SetAttribute("HostMin", q.hostMin)
+		f:SetAttribute("HostOptions", env.jsonEncode(q.hostOptions))
+		f:SetAttribute("Host", 0)
+		f:SetAttribute("Options", "")
 		f:SetAttribute("Count", 0)
 		f:SetAttribute("Members", "")
 		f:SetAttribute("Phase", "waiting")
@@ -132,10 +166,27 @@ function Lobby.start(rawConfig: any, options: Options?)
 				f:SetAttribute("Count", #v.members)
 				f:SetAttribute("Members", table.concat(ids, ","))
 				f:SetAttribute("Phase", v.phase)
+				f:SetAttribute("Capacity", v.capacity)
+				f:SetAttribute("MinPlayers", v.minPlayers)
+				f:SetAttribute("Host", v.host or 0)
+				f:SetAttribute("Options", if v.options then env.jsonEncode(v.options) else "")
 				f:SetAttribute("SecondsLeft", if v.secondsLeft then math.ceil(v.secondsLeft) else -1)
 				self.Changed:Fire(queueId, v)
 			end
 		end
+	end
+
+	-- size = "host": the host's choice { size, min?, options? }. Returns (true) or (false, reason).
+	function self.configure(_: any, player: any, queueId: string, choice: any): (boolean, string?)
+		local ok, reason = state:configure(player.UserId, queueId, choice, env.now())
+		if ok then
+			publish()
+		end
+		return ok, reason
+	end
+
+	function self.notify(_: any, player: any, message: string)
+		notify(player, message)
 	end
 
 	function self.join(_: any, player: any, queueId: string): (boolean, string?)
@@ -238,6 +289,7 @@ function Lobby.start(rawConfig: any, options: Options?)
 			members = userIds,
 			players = players,
 			simulated = false,
+			hostOptions = launch.options,
 		}
 		local custom = nil
 		if opts.teleportData then
@@ -255,6 +307,7 @@ function Lobby.start(rawConfig: any, options: Options?)
 			members = userIds,
 			sentAt = os.time(),
 			data = custom,
+			options = launch.options,
 		})
 		party.envelope = envelope
 
@@ -324,7 +377,7 @@ function Lobby.start(rawConfig: any, options: Options?)
 	)
 
 	local lastRequest: { [number]: number } = {}
-	local function onRequest(player: any, action: any, queueId: any)
+	local function onRequest(player: any, action: any, queueId: any, ...: any)
 		local last = lastRequest[player.UserId]
 		local now = env.now()
 		if last and now - last < Lobby.REQUEST_INTERVAL then
@@ -334,7 +387,13 @@ function Lobby.start(rawConfig: any, options: Options?)
 		if action == "join" and type(queueId) == "string" then
 			local ok, reason = self:join(player, queueId)
 			if not ok then
-				notify(player, `Cannot join: {reason}`)
+				notify(player, Lobby.explainJoin(reason :: string))
+			end
+		elseif action == "configure" and type(queueId) == "string" then
+			local choice = select(1, ...)
+			local ok, reason = self:configure(player, queueId, choice)
+			if not ok then
+				notify(player, `Cannot create the party: {reason}`)
 			end
 		elseif action == "leave" then
 			self:leave(player)

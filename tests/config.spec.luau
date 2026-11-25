@@ -70,6 +70,37 @@ return function(T)
 			expect(string.find(p, "fullCountdown", 1, true) ~= nil).toBe(true)
 			expect(string.find(p, 'unknown key "launchWhenFull"', 1, true) ~= nil).toBe(true)
 		end)
+		it("defaults leave, size and host settings", function()
+			local _, c = Config.validate(Fixtures.config())
+			local q = c.queues[1]
+			expect(q.leave).toBe("walk")
+			expect(q.size).toBe("fixed")
+			expect(q.hostMin).toBe(false)
+			expect(q.hostTimeout).toBe(20)
+			expect(q.hostOptions).toEqual({})
+		end)
+		it("accepts a host party queue with options", function()
+			local raw = Fixtures.config()
+			raw.queues[2].size = "host"
+			raw.queues[2].leave = "button"
+			raw.queues[2].hostOptions = { { id = "map", label = "Map", choices = { "Snow", "Jungle" } } }
+			local ok, c = Config.validate(raw)
+			expect(ok).toBe(true)
+			expect(c.queues[2].hostOptions[1].choices).toEqual({ "Snow", "Jungle" })
+		end)
+		it("rejects bad leave, size and host options", function()
+			local raw = Fixtures.config()
+			raw.queues[1].leave = "jump"
+			raw.queues[1].size = "any"
+			raw.queues[2].hostOptions = { { id = "map", choices = {} } }
+			local p = problemsOf(raw)
+			expect(string.find(p, ".leave must be", 1, true) ~= nil).toBe(true)
+			expect(string.find(p, ".size must be", 1, true) ~= nil).toBe(true)
+			expect(string.find(p, "choices must be a non-empty list", 1, true) ~= nil).toBe(true)
+			raw = Fixtures.config()
+			raw.queues[1].hostOptions = { { id = "map", choices = { "A" } } }
+			expect(string.find(problemsOf(raw), 'needs size = "host"', 1, true) ~= nil).toBe(true)
+		end)
 		it("rejects bad studio options", function()
 			local raw = Fixtures.config()
 			raw.studio = { teleport = "real", fakeMembers = 1.5 }

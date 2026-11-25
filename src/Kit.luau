@@ -167,6 +167,9 @@ function Kit.booth(lobby: any, queueId: string, cframe: CFrame, options: any?): 
 	)
 	local enter = part(model, "Enter", Vector3.new(door, h, t), cframe * CFrame.new(0, y, (d + t) / 2), HIDDEN)
 	enter.CanTouch = true
+	-- barriers stop only queued players (used when the queue has leave = "button"): the doorway and a roof
+	part(model, "Barrier", Vector3.new(door, h + 6, t), cframe * CFrame.new(0, 1 + (h + 6) / 2, (d + t) / 2), HIDDEN)
+	part(model, "Barrier", Vector3.new(w + 2 * t, 1, d + 2 * t), cframe * CFrame.new(0, 1 + h + 6, 0), HIDDEN)
 	part(model, "Zone", Vector3.new(w, h + 4, d), cframe * CFrame.new(0, 1 + (h + 4) / 2, 0), {
 		Transparency = 1,
 		CanCollide = false,

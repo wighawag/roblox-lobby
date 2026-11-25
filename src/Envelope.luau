@@ -13,6 +13,7 @@ export type Envelope = {
 	members: { number }, -- user ids of the whole party
 	sentAt: number, -- os.time() on the lobby server
 	data: any, -- the game's own table (or nil)
+	options: { [string]: string }?, -- size = "host": the host's choices (validated by the lobby)
 }
 
 local Envelope = {}
@@ -26,6 +27,7 @@ function Envelope.build(fields: {
 	members: { number },
 	sentAt: number,
 	data: any?,
+	options: { [string]: string }?,
 }): Envelope
 	local members = table.clone(fields.members)
 	table.sort(members)
@@ -37,6 +39,7 @@ function Envelope.build(fields: {
 		members = members,
 		sentAt = fields.sentAt,
 		data = fields.data,
+		options = fields.options,
 	}
 end
 
@@ -66,6 +69,16 @@ function Envelope.parse(value: any): (boolean, any)
 	for _, m in value.members do
 		if type(m) ~= "number" then
 			return false, "bad-envelope"
+		end
+	end
+	if value.options ~= nil then
+		if type(value.options) ~= "table" then
+			return false, "bad-envelope"
+		end
+		for k, v in value.options do
+			if type(k) ~= "string" or type(v) ~= "string" then
+				return false, "bad-envelope"
+			end
 		end
 	end
 	return true, value

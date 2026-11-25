@@ -68,6 +68,15 @@ return function(T)
 			expect(#ev.joined).toBe(2)
 		end)
 
+		it("passes the host's options to the match", function()
+			local w, arrival, ev = setup()
+			local jd = joinData("M", { 1 })
+			jd.TeleportData.options = { map = "Snow" }
+			w.addPlayer(1, jd)
+			arrival:_step()
+			expect(ev.ready[1].hostOptions).toEqual({ map = "Snow" })
+		end)
+
 		it("starts after joinTimeout with missing members", function()
 			local w, arrival, ev = setup()
 			w.addPlayer(1, joinData("M", { 1, 2, 3 }))

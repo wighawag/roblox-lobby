@@ -43,6 +43,14 @@ return {
 		-- minPlayers: needed to start the countdown; maxPlayers: party size (at most 50)
 		-- countdown: seconds once minPlayers are in (default 15)
 		-- fullCountdown: once the queue is full, the time left is cut to this (default 5; 0 = go at once)
+		-- leave: "walk" (default: walking out of a booth leaves) or "button" (only the Leave button leaves;
+		--   the booth's Barrier parts keep queued players in, so jumping or walking out does not leave)
+		-- size: "fixed" (default) or "host": the first player in chooses the party size (1..maxPlayers) in a
+		--   "Create Party" dialog; the queue then fills to exactly that size
+		-- hostMin: with size "host", the host also chooses a smaller number to start with (default false)
+		-- hostTimeout: seconds the host has to choose before maxPlayers is used (default 20)
+		-- hostOptions: with size "host", choices the host makes, arriving in the game as match.hostOptions:
+		--   { { id = "map", label = "Map", choices = { "Random", "Snow", "Jungle" } } } (first choice = default)
 		{ id = "duo", place = "game", minPlayers = 2, maxPlayers = 2, countdown = 10 },
 		{ id = "squad", place = "game", minPlayers = 2, maxPlayers = 4, countdown = 20 },
 	},
@@ -77,7 +85,8 @@ Then give each queue a place in the world. Pick ONE of:
   - `EnterPos`: where a joining player is placed.
   - `ExitPos`: where a leaving player is placed (add one; otherwise a player who presses Leave stays on the pad).
   - `CamPos`: the camera while queued (used by `Client.defaultUi`).
-  - `Zone`: the inside of a booth, an invisible non-colliding part: a queued player who walks out of it leaves the queue within about half a second.
+  - `Zone`: the inside of a booth, an invisible non-colliding part: a queued player who walks out of it leaves the queue within about half a second (with `leave = "button"`: is put back inside instead).
+  - `Barrier`: invisible parts (across the doorway, a roof) that block only queued players, for `leave = "button"`; everyone else walks through them.
 
   A walled booth, the HIPS pattern, is: walls and a floor (any names), an invisible non-colliding `Enter` across the doorway, `EnterPos` inside, `ExitPos` outside the door, `CamPos` looking in, and a `Zone` covering the inside. Optional attributes: `TouchToJoin = false` (no touch), `Prompt = true` (a "Join" ProximityPrompt). In a Rojo project file: `"DuoBooth": { "$className": "Model", "$properties": { "Tags": ["RobloxLobbyQueue"] }, "$attributes": { "QueueId": "duo" }, ...parts... }` (checked with Rojo 7.6.1).
 - **Quick-start booths or pads**, for a first playtest: in the server script, before `Pads.bind`, `RobloxLobby.Kit.booth(lobby, "duo", CFrame.new(-14, 0, -28))` (a walled booth with all the parts above, door on its local +Z side) or `RobloxLobby.Kit.pad(lobby, "duo", CFrame.new(-12, 0.5, -24))` (a flat pad). Options: `theme = { color, floorColor, material, size, textColor, font }`, `format = { players = function(view) ... end, time = ... }`, `billboard = <your BillboardGui>` (the kit only sets the `Text` of its descendants named `Players` and `Time`).
@@ -90,6 +99,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RobloxLobby = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("RobloxLobby"))
 RobloxLobby.Client.defaultUi() -- options: theme, format, template (your ScreenGui with "Status" and "Leave"), camera
 ```
+
+A queue with `size = "host"` shows its host the default "Create Party" dialog (party size buttons, one row per host option, Create); pass `partyDialog = false` to `defaultUi` to build your own with `Client.observe` (`view.phase == "creating"`, `view.host`, `view.maxPlayers`, `view.hostMin`, `view.hostOptions`) and `Client.createParty(queueId, { size = 3, min = 2, options = { map = "Snow" } })`.
 
 or your own UI, fed by `Client.observe(queueId, function(view) ... end)` (`view.count`, `view.capacity`, `view.minPlayers`, `view.phase` = "waiting" or "counting", `view.secondsLeft`, `view.members`), `Client.onMyQueueChanged(function(queueIdOrNil) ... end)` and `Client.onNotice(function(message) ... end)` (messages from the server, e.g. a failed teleport).
 
@@ -113,6 +124,7 @@ local arrival = RobloxLobby.Arrival.start(require(ReplicatedStorage.LobbyConfig)
 arrival.Ready:Connect(function(match)
 	-- match.players: the players to play with (present now)
 	-- match.data: the lobby's teleportData; match.expected / match.missing: user ids
+	-- match.hostOptions: size = "host" queues: the host's choices, e.g. { map = "Snow" } (nil otherwise)
 	-- match.fakeMembers: in Studio, extra slots the game may fill with bots (studio.fakeMembers), 0 live
 	-- match.source: "teleport" (real) or "studio" (debug playtest)
 	startGame(match.players, match.data)

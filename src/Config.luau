@@ -9,6 +9,8 @@
 --   arrival       { joinTimeout: number? }
 --   studio        { joinWindow: number?, fakeMembers: number?, teleport: "auto" | "simulate"? }
 
+export type HostOption = { id: string, label: string, choices: { string } }
+
 export type QueueSpec = {
 	id: string,
 	place: string,
@@ -16,6 +18,11 @@ export type QueueSpec = {
 	maxPlayers: number,
 	countdown: number,
 	fullCountdown: number,
+	leave: string, -- "walk" | "button"
+	size: string, -- "fixed" | "host"
+	hostMin: boolean, -- size "host": the host also picks the minimum to start with
+	hostTimeout: number, -- size "host": seconds the host has to choose
+	hostOptions: { HostOption },
 }
 
 export type Config = {
@@ -33,8 +40,19 @@ Config.MAX_PARTY = 50 -- TeleportAsync takes at most 50 players per call
 
 local TOP_KEYS =
 	{ experienceId = true, lobbyPlaceId = true, places = true, queues = true, arrival = true, studio = true }
-local QUEUE_KEYS =
-	{ id = true, place = true, minPlayers = true, maxPlayers = true, countdown = true, fullCountdown = true }
+local QUEUE_KEYS = {
+	id = true,
+	place = true,
+	minPlayers = true,
+	maxPlayers = true,
+	countdown = true,
+	fullCountdown = true,
+	leave = true,
+	size = true,
+	hostMin = true,
+	hostTimeout = true,
+	hostOptions = true,
+}
 local ARRIVAL_KEYS = { joinTimeout = true }
 local STUDIO_KEYS = { joinWindow = true, fakeMembers = true, teleport = true }
 
@@ -133,6 +151,62 @@ function Config.validate(raw: any): (boolean, any)
 			if type(fullCountdown) ~= "number" or fullCountdown < 0 then
 				table.insert(problems, where .. ".fullCountdown must be a number of seconds, 0 or more")
 			end
+			local leave = if q.leave == nil then "walk" else q.leave
+			if leave ~= "walk" and leave ~= "button" then
+				table.insert(problems, where .. '.leave must be "walk" or "button"')
+			end
+			local size = if q.size == nil then "fixed" else q.size
+			if size ~= "fixed" and size ~= "host" then
+				table.insert(problems, where .. '.size must be "fixed" or "host"')
+			end
+			local hostMin = if q.hostMin == nil then false else q.hostMin
+			if type(hostMin) ~= "boolean" then
+				table.insert(problems, where .. ".hostMin must be true or false")
+			end
+			local hostTimeout = if q.hostTimeout == nil then 20 else q.hostTimeout
+			if type(hostTimeout) ~= "number" or hostTimeout <= 0 then
+				table.insert(problems, where .. ".hostTimeout must be a positive number of seconds")
+			end
+			local hostOptions = {}
+			if q.hostOptions ~= nil then
+				if type(q.hostOptions) ~= "table" then
+					table.insert(problems, where .. ".hostOptions must be a list")
+				else
+					local seenOpt = {}
+					for k, o in q.hostOptions do
+						local ow = `{where}.hostOptions[{k}]`
+						if type(o) ~= "table" or type(o.id) ~= "string" or o.id == "" then
+							table.insert(problems, ow .. " needs an id (string)")
+							continue
+						end
+						unknownKeys(o, { id = true, label = true, choices = true }, ow, problems)
+						if seenOpt[o.id] then
+							table.insert(problems, `{ow}: duplicate id "{o.id}"`)
+						end
+						seenOpt[o.id] = true
+						local ok = type(o.choices) == "table" and #o.choices >= 1
+						if ok then
+							for _, c in o.choices do
+								if type(c) ~= "string" then
+									ok = false
+								end
+							end
+						end
+						if not ok then
+							table.insert(problems, ow .. ".choices must be a non-empty list of strings")
+							continue
+						end
+						table.insert(hostOptions, {
+							id = o.id,
+							label = if type(o.label) == "string" then o.label else o.id,
+							choices = table.clone(o.choices),
+						})
+					end
+				end
+				if #hostOptions > 0 and size ~= "host" then
+					table.insert(problems, where .. '.hostOptions needs size = "host"')
+				end
+			end
 			table.insert(queues, {
 				id = q.id,
 				place = q.place,
@@ -140,6 +214,11 @@ function Config.validate(raw: any): (boolean, any)
 				maxPlayers = maxP,
 				countdown = countdown,
 				fullCountdown = fullCountdown,
+				leave = leave,
+				size = size,
+				hostMin = hostMin,
+				hostTimeout = hostTimeout,
+				hostOptions = hostOptions,
 			})
 		end
 	end

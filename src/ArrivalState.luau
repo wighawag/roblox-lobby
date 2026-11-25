@@ -16,6 +16,7 @@ export type Match = {
 	matchId: string,
 	queueId: string,
 	data: any,
+	hostOptions: { [string]: string }?, -- size = "host": the host's choices
 	expected: { number }, -- the party's user ids
 	present: { number }, -- here when the match became ready
 	missing: { number }, -- expected but not here
@@ -130,6 +131,7 @@ local function makeMatch(source: string, env: any, present: { number }): Match
 		matchId = env.matchId,
 		queueId = env.queueId,
 		data = env.data,
+		hostOptions = env.options,
 		expected = table.clone(env.members),
 		present = table.clone(present),
 		missing = missing,
