@@ -1,7 +1,7 @@
 [package]
 name = "wighawag/roblox-lobby"
 description = "Lobby, queues and party teleports between places, with Studio fallbacks and arrival checks"
-version = "0.1.0"
+version = "0.2.0"
 license = "MIT"
 authors = ["wighawag"]
 realm = "shared"

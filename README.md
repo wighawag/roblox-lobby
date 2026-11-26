@@ -9,7 +9,9 @@ Goal: a game (including one written by a kid's agent) gets a correct multi-playe
 - Studio: teleports are simulated (and logged) for local files, the game place gathers Studio clients into a debug match, and a real single-player teleport runs when Studio supports it.
 - `roblox-lobby check LobbyConfig.luau` confirms through Roblox's public web APIs that every place id belongs to the intended experience, without a client.
 
-Install: `roblox-lobby vendor <project>` (from the flake package: `nix run github:wighawag/roblox-lobby -- vendor .`), or with Wally `RobloxLobby = "wighawag/roblox-lobby@0.1"`.
+Install: `roblox-lobby vendor <project>` (from the flake package: `nix run github:wighawag/roblox-lobby -- vendor .`), or with Wally `RobloxLobby = "wighawag/roblox-lobby@0.2"`.
+
+Status: 0.2.0 (2026-11-25) adds `size = "host"` (the first player chooses the party size in a Create Party dialog, with optional host options such as the map) and `leave = "button"` (only the Leave button leaves a booth). Their live check (`docs/live-checklist.md` H1 to H4) is not yet run; 0.1.0 passed the full live checklist.
 
 Design and decisions: [docs/design.md](docs/design.md). Studio loop: [docs/studio-playtests.md](docs/studio-playtests.md). Agent skill: [skills/roblox-lobby/SKILL.md](skills/roblox-lobby/SKILL.md).
 

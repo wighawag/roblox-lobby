@@ -163,7 +163,7 @@ function Config.validate(raw: any): (boolean, any)
 			if type(hostMin) ~= "boolean" then
 				table.insert(problems, where .. ".hostMin must be true or false")
 			end
-			local hostTimeout = if q.hostTimeout == nil then 20 else q.hostTimeout
+			local hostTimeout = if q.hostTimeout == nil then 60 else q.hostTimeout
 			if type(hostTimeout) ~= "number" or hostTimeout <= 0 then
 				table.insert(problems, where .. ".hostTimeout must be a positive number of seconds")
 			end

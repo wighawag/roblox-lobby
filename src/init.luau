@@ -10,7 +10,7 @@
 
 local RobloxLobby = {}
 
-RobloxLobby.VERSION = "0.2.0-dev"
+RobloxLobby.VERSION = "0.2.0"
 
 local loaders: { [string]: () -> any } = {
 	Lobby = function()

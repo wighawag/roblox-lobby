@@ -4,6 +4,23 @@ Follow these steps in order. They give a game a lobby place where players queue,
 
 Vocabulary: an **experience** (Roblox calls it a universe) holds several **places**. The **lobby place** is its start place; the **game place** is where matches run. Both must be in the SAME experience: this is the most common live failure, and step 7 checks it.
 
+## Most asked: "the first player chooses the party size"
+
+This is built in: set `size = "host"` on a queue in the LobbyConfig (step 3). Do NOT build a party-size lobby by hand.
+
+```lua
+{
+	id = "party", place = "game", minPlayers = 1, maxPlayers = 5,
+	size = "host",       -- first player in gets a "Create Party" dialog: size 1..5, then Create
+	leave = "button",    -- optional: only the Leave button leaves (walking or jumping out does not)
+	hostOptions = {      -- optional: choices the host makes, received in the game as match.hostOptions
+		{ id = "map", label = "Map", choices = { "Random", "Snow", "Jungle" } },
+	},
+},
+```
+
+The booth then waits for exactly that many players and starts on a 5 s countdown when full. While the host chooses, others cannot join (they are told why); after `hostTimeout` (60 s) the maximum is used; if the host leaves, the next player becomes host. Add `hostMin = true` to also let the host choose a smaller number to start with. The default UI (`Client.defaultUi()`) shows the dialog; the game reads the choices from `match.hostOptions` in `arrival.Ready`.
+
 ## 1. Two places, one Rojo project each
 
 A game with a lobby has two Rojo project files, e.g. `lobby.project.json` and `game.project.json`, each building one place. Code shared by both goes under `ReplicatedStorage` in both.
@@ -20,7 +37,7 @@ This copies the package to `Packages/RobloxLobby/` (with a `VERSION` file). Then
 "Packages": { "$className": "Folder", "RobloxLobby": { "$path": "Packages/RobloxLobby" } },
 ```
 
-Commit `Packages/RobloxLobby/` with the game: the built place file then contains everything. To update later, run `roblox-lobby vendor .` again; `roblox-lobby vendor --check .` tells whether the copy is current. (A project that uses Wally can instead add `RobloxLobby = "wighawag/roblox-lobby@0.1"` under `[dependencies]` in `wally.toml` and run `wally install`: same folder, same `require`.)
+Commit `Packages/RobloxLobby/` with the game: the built place file then contains everything. To update later, run `roblox-lobby vendor .` again; `roblox-lobby vendor --check .` tells whether the copy is current. (A project that uses Wally can instead add `RobloxLobby = "wighawag/roblox-lobby@0.2"` under `[dependencies]` in `wally.toml` and run `wally install`: same folder, same `require`.)
 
 ## 3. Write the LobbyConfig (shared by both places)
 
@@ -48,7 +65,7 @@ return {
 		-- size: "fixed" (default) or "host": the first player in chooses the party size (1..maxPlayers) in a
 		--   "Create Party" dialog; the queue then fills to exactly that size
 		-- hostMin: with size "host", the host also chooses a smaller number to start with (default false)
-		-- hostTimeout: seconds the host has to choose before maxPlayers is used (default 20)
+		-- hostTimeout: seconds the host has to choose before maxPlayers is used (default 60)
 		-- hostOptions: with size "host", choices the host makes, arriving in the game as match.hostOptions:
 		--   { { id = "map", label = "Map", choices = { "Random", "Snow", "Jungle" } } } (first choice = default)
 		{ id = "duo", place = "game", minPlayers = 2, maxPlayers = 2, countdown = 10 },
